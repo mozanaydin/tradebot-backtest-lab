@@ -39,8 +39,9 @@ For every candle:
 1. Calculate typical price as `(high + low + close) / 3`.
 2. Calculate rolling VWAP over the configured 24- or 48-candle window:
    `sum(typical_price * volume) / sum(volume)`.
-3. Calculate the rolling population standard deviation of
-   `typical_price - VWAP` over the same window.
+3. Calculate the rolling population standard deviation of typical price over
+   the same window. This is also the standard deviation of those window prices
+   around any fixed center, including the current window's VWAP.
 4. Calculate deviation z-score as
    `(close - VWAP) / deviation_standard_deviation`.
 5. Calculate 14-period ATR using the existing ATR convention.
