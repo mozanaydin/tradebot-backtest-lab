@@ -1,4 +1,5 @@
 .DS_Store
+.worktrees/
 .pytest_cache/
 .venv/
 __pycache__/
