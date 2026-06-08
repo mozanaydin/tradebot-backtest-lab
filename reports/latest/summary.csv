@@ -1,0 +1,5 @@
+strategy,params,total_return_pct,max_drawdown_pct,win_rate_pct,trade_count,exposure_time_pct,score
+breakout_baseline,{'lookback': 50},5.873764312233654,31.700247038789485,13.88888888888889,36,69.08249807247493,0.1852908056219978
+regime_switching,"{'high_volatility_percentile': 0.8, 'trend_adx': 25, 'range_adx': 20, 'slope_threshold': 0.25, 'donchian_lookback': 50, 'bollinger_length': 40, 'bollinger_entry_z': 1.5}",-7.707160392185008,32.16824502364203,35.80246913580247,81,49.26754047802621,-0.23958908502843831
+buy_and_hold,{},-17.48202285258752,28.04194855924421,0.0,1,100.0,-0.623423968404095
+bollinger_baseline,"{'length': 40, 'entry_z': 1.5}",-30.165270260049837,44.54605595100107,55.73770491803278,61,67.07787201233616,-0.67717039401267

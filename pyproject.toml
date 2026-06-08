@@ -1,0 +1,29 @@
+[project]
+name = "tradebot-backtest"
+version = "0.1.0"
+description = "Hyperliquid BTC 1h strategy backtester"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "numpy>=2.0.0",
+    "pandas>=2.2.0",
+    "plotly>=5.24.0",
+    "typer>=0.12.0",
+]
+
+[project.scripts]
+tradebot-backtest = "tradebot_backtest.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

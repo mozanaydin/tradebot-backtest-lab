@@ -1,0 +1,2 @@
+strategy,params,total_return_pct,max_drawdown_pct,win_rate_pct,trade_count,exposure_time_pct,score
+regime_switching,"{'high_volatility_percentile': 0.8, 'trend_adx': 25, 'range_adx': 20, 'slope_threshold': 0.25, 'donchian_lookback': 50, 'bollinger_length': 40, 'bollinger_entry_z': 1.5}",10.228957137901396,31.45477071067213,36.666666666666664,150,40.50925925925926,0.3251957304661218
