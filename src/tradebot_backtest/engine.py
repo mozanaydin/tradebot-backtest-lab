@@ -29,6 +29,10 @@ class BacktestConfig:
     max_leverage: float = 3.0
     cost_model: CostModel = field(default_factory=CostModel)
     include_funding: bool = True
+    allowed_directions: tuple[Literal["long", "short"], ...] = ("long", "short")
+    allowed_entry_hours: tuple[int, ...] | None = None
+    cooldown_bars_after_stop: int = 0
+    minimum_stop_distance_to_cost: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -138,6 +142,7 @@ def run_backtest(
     trades: list[Trade] = []
     pending_signal: Signal | None = None
     open_position: dict[str, object] | None = None
+    cooldown_until_index = -1
 
     for idx, candle in candles.iterrows():
         timestamp = pd.Timestamp(candle["timestamp"])
@@ -148,11 +153,15 @@ def run_backtest(
             if open_position is not None and pending_signal.side == "flat":
                 equity, trade = _close_position(open_position, pending_signal, timestamp, open_price, equity, config)
                 trades.append(trade)
+                if trade.exit_reason == "invalidation_close":
+                    cooldown_until_index = idx + config.cooldown_bars_after_stop
                 open_position = None
             elif pending_signal.side in {"long", "short"}:
                 if open_position is not None:
                     equity, trade = _close_position(open_position, pending_signal, timestamp, open_price, equity, config)
                     trades.append(trade)
+                    if trade.exit_reason == "invalidation_close":
+                        cooldown_until_index = idx + config.cooldown_bars_after_stop
                     open_position = None
                 notional = _notional_for_signal(
                     equity,
@@ -184,7 +193,12 @@ def run_backtest(
 
         current_signal = signal_by_time.get(timestamp)
         if open_position is None:
-            if current_signal is not None and current_signal.side in {"long", "short"}:
+            if (
+                current_signal is not None
+                and current_signal.side in {"long", "short"}
+                and idx > cooldown_until_index
+                and _entry_allowed(current_signal, timestamp, config)
+            ):
                 pending_signal = current_signal
         else:
             side = open_position["side"]
@@ -319,6 +333,14 @@ def score_result(result: BacktestResult, minimum_trades: int = 10) -> float:
     return result.total_return_pct / result.max_drawdown_pct
 
 
+def _entry_allowed(signal: Signal, timestamp: pd.Timestamp, config: BacktestConfig) -> bool:
+    if signal.side not in config.allowed_directions:
+        return False
+    if config.allowed_entry_hours is not None and timestamp.hour not in config.allowed_entry_hours:
+        return False
+    return True
+
+
 def _notional_for_signal(
     equity: float,
     invalidation_price: float,
@@ -335,6 +357,9 @@ def _notional_for_signal(
     ):
         return 0.0
     stop_distance_pct = abs(entry_price - invalidation_price) / entry_price
+    round_trip_cost_pct = (config.cost_model.fee_rate + config.cost_model.slippage_rate) * 2
+    if config.minimum_stop_distance_to_cost > 0 and stop_distance_pct <= round_trip_cost_pct * config.minimum_stop_distance_to_cost:
+        return 0.0
     base_notional = calculate_position_notional(equity, config.risk_fraction, stop_distance_pct, config.max_leverage)
     return base_notional * exposure_multiplier
 

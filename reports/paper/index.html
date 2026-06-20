@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Paper Trader Status</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #08111f;
+        --panel: #111d31;
+        --panel-soft: #182840;
+        --text: #f4f7fb;
+        --muted: #9eb0cc;
+        --good: #46d59f;
+        --bad: #ff7b8b;
+        --accent: #66b3ff;
+        --pending: #ffd166;
+        --border: rgba(255,255,255,0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(102,179,255,0.12), transparent 28%),
+          radial-gradient(circle at top right, rgba(70,213,159,0.08), transparent 24%),
+          var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
+      .hero {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: 1.4fr 1fr;
+        align-items: stretch;
+      }
+      .panel {
+        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        backdrop-filter: blur(12px);
+      }
+      .eyebrow { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+      h1, h2, p { margin: 0; }
+      h1 { font-size: 34px; line-height: 1.1; margin-top: 8px; }
+      h2 { font-size: 20px; margin-bottom: 14px; }
+      .muted { color: var(--muted); line-height: 1.5; }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 700;
+        margin-top: 16px;
+        background: rgba(255,255,255,0.06);
+      }
+      .status-pill.open { color: var(--good); }
+      .status-pill.pending { color: var(--pending); }
+      .status-pill.flat { color: var(--muted); }
+      .metric-grid, .stat-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+      .metric, .stat {
+        background: var(--panel-soft);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+      }
+      .metric span, .stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      .metric strong, .stat strong {
+        font-size: 20px;
+        line-height: 1.2;
+      }
+      .stack { display: grid; gap: 18px; margin-top: 20px; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th, td {
+        text-align: left;
+        padding: 12px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      th { color: var(--muted); font-weight: 600; }
+      .good { color: var(--good); }
+      .bad { color: var(--bad); }
+      @media (max-width: 860px) {
+        .hero { grid-template-columns: 1fr; }
+        h1 { font-size: 28px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="hero">
+        <div class="panel">
+          <div class="eyebrow">Paper Trading</div>
+          <h1>Best Strategy Live Check</h1>
+          <p class="muted" style="margin-top: 12px;">
+            This page follows the current best backtest winner on fresh 1h Hyperliquid BTC data.
+            It is a local paper trader, so it watches the market and simulates entries, exits, fees, and PnL without sending real orders.
+          </p>
+          <div class="status-pill flat">Flat</div>
+          <p class="muted" style="margin-top: 14px;">Last completed candle: 2026-06-20T10:00:00+00:00 | Last close: 63661.00</p>
+          <p class="muted" style="margin-top: 8px;">Latest signal: 2026-06-15T21:00:00+00:00 | flat | atr_trailing_exit</p>
+        </div>
+        <div class="panel">
+          <h2>What The Bot Would Do Next</h2>
+          <p class="muted">No pending entry.</p>
+          <div class="stack">
+            <div class="metric-grid">
+              <div class="metric"><span>Marked Equity</span><strong>$1080.55</strong></div>
+              <div class="metric"><span>Cash Equity</span><strong>$1080.55</strong></div>
+              <div class="metric"><span>Closed Trades</span><strong>14</strong></div>
+              <div class="metric"><span>Win / Loss</span><strong>7 / 7</strong></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack">
+        <div class="panel">
+          <h2>Open Position</h2>
+          <p class='muted'>No open paper position right now.</p>
+        </div>
+        <div class="panel">
+          <h2>Recent Paper Trades</h2>
+          
+        <table>
+          <thead>
+            <tr>
+              <th>Entry Time</th>
+              <th>Side</th>
+              <th>Size</th>
+              <th>Entry</th>
+              <th>Exit</th>
+              <th>PnL</th>
+              <th>Exit Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+            <tr>
+              <td>2026-06-09T16:00:00+00:00</td>
+              <td>short</td>
+              <td>$311.99</td>
+              <td>61110.00</td>
+              <td>62115.00</td>
+              <td class="bad">-5.54</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-06-01T07:00:00+00:00</td>
+              <td>short</td>
+              <td>$575.51</td>
+              <td>73132.00</td>
+              <td>67295.00</td>
+              <td class="good">45.19</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-05-26T18:00:00+00:00</td>
+              <td>short</td>
+              <td>$393.94</td>
+              <td>75901.00</td>
+              <td>74022.00</td>
+              <td class="good">9.24</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-05-18T00:00:00+00:00</td>
+              <td>short</td>
+              <td>$596.68</td>
+              <td>77430.00</td>
+              <td>77598.00</td>
+              <td class="bad">-2.07</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-03-29T23:00:00+00:00</td>
+              <td>short</td>
+              <td>$433.05</td>
+              <td>65819.00</td>
+              <td>67090.00</td>
+              <td class="bad">-8.93</td>
+              <td>invalidation_close</td>
+            </tr>
+            
+            <tr>
+              <td>2026-03-22T00:00:00+00:00</td>
+              <td>short</td>
+              <td>$472.53</td>
+              <td>68875.00</td>
+              <td>68871.00</td>
+              <td class="bad">-0.59</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-03-18T12:00:00+00:00</td>
+              <td>short</td>
+              <td>$356.28</td>
+              <td>72915.00</td>
+              <td>70481.00</td>
+              <td class="good">11.43</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+            <tr>
+              <td>2026-03-08T23:00:00+00:00</td>
+              <td>short</td>
+              <td>$329.76</td>
+              <td>66199.00</td>
+              <td>67170.00</td>
+              <td class="bad">-5.27</td>
+              <td>atr_trailing_exit</td>
+            </tr>
+            
+          </tbody>
+        </table>
+        
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

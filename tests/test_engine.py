@@ -175,6 +175,65 @@ def test_close_beyond_invalidation_exits_at_next_candle_open() -> None:
     assert result.trades[0].exit_reason == "invalidation_close"
 
 
+def test_long_only_config_skips_short_entries() -> None:
+    candles = sample_candles()
+    signals = [Signal(candles.loc[0, "timestamp"], "test", {}, "short", "entry", 110.0)]
+    config = BacktestConfig(
+        cost_model=CostModel(0.0, 0.0),
+        allowed_directions=("long",),
+    )
+
+    result = run_backtest(candles, signals, config)
+
+    assert result.trades == []
+
+
+def test_entry_hour_filter_blocks_disallowed_hours() -> None:
+    candles = sample_candles()
+    signals = [Signal(candles.loc[0, "timestamp"], "test", {}, "long", "entry", 90.0)]
+    config = BacktestConfig(
+        cost_model=CostModel(0.0, 0.0),
+        allowed_entry_hours=(5,),
+    )
+
+    result = run_backtest(candles, signals, config)
+
+    assert result.trades == []
+
+
+def test_cooldown_after_stop_prevents_immediate_reentry() -> None:
+    candles = sample_candles()
+    signals = [
+        Signal(candles.loc[0, "timestamp"], "test", {}, "long", "entry", 101.5),
+        Signal(candles.loc[4, "timestamp"], "test", {}, "long", "retry", 100.0),
+    ]
+    config = BacktestConfig(
+        cost_model=CostModel(0.0, 0.0),
+        cooldown_bars_after_stop=2,
+    )
+
+    result = run_backtest(candles, signals, config)
+
+    assert len(result.trades) == 1
+    assert result.trades[0].exit_reason == "invalidation_close"
+
+
+def test_cost_buffer_skips_trade_when_stop_distance_too_small_for_costs() -> None:
+    candles = sample_candles()
+    signals = [Signal(candles.loc[0, "timestamp"], "test", {}, "long", "entry", 100.95)]
+    config = BacktestConfig(
+        starting_balance=1000.0,
+        risk_fraction=0.05,
+        max_leverage=3.0,
+        cost_model=CostModel(0.001, 0.0),
+        minimum_stop_distance_to_cost=1.5,
+    )
+
+    result = run_backtest(candles, signals, config)
+
+    assert result.trades == []
+
+
 def test_equity_curve_marks_open_position_to_market() -> None:
     candles = sample_candles()
     signals = [

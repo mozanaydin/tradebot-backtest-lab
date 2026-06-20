@@ -6,7 +6,7 @@ import pandas as pd
 from typer.testing import CliRunner
 
 import tradebot_backtest.cli as cli_module
-from tradebot_backtest.cli import app, select_best_per_family
+from tradebot_backtest.cli import _merge_funding, app, select_best_per_family
 from tradebot_backtest.engine import BacktestResult, Signal
 from tradebot_backtest.regime import RegimeParams
 
@@ -87,9 +87,12 @@ def test_cli_includes_funding_strategies_when_funding_file_is_supplied(tmp_path:
         "ema_crossover",
         "rsi_mean_reversion",
         "breakout",
+        "breakout_funding_veto",
         "volatility_scaled_momentum",
         "bollinger_regime_reversion",
+        "pullback_in_trend",
         "compression_breakout",
+        "compression_breakout_retest",
         "funding_crowding_reversal",
         "funding_conditioned_momentum",
     }
@@ -117,6 +120,31 @@ def test_select_best_per_family_uses_training_score() -> None:
         "momentum": {"lookback": 24},
         "breakout": {"lookback": 20},
     }
+
+
+def test_merge_funding_forward_fills_sparse_rows_and_backfills_premium_from_mark_price() -> None:
+    candles = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC"),
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.0, 101.0, 102.0],
+            "volume": [1.0, 1.0, 1.0],
+        }
+    )
+    funding = pd.DataFrame(
+        {
+            "timestamp": [candles.loc[0, "timestamp"]],
+            "funding_rate": [0.0001],
+            "mark_price": [100.5],
+        }
+    )
+
+    merged = _merge_funding(candles, funding)
+
+    assert merged["funding_rate"].tolist() == [0.0001, 0.0001, 0.0001]
+    assert merged["premium"].notna().all()
 
 
 def test_regime_command_generates_comparison_report(

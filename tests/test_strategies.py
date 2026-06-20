@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import pandas as pd
 
+from tradebot_backtest.engine import Signal
 from tradebot_backtest.strategies import (
+    compression_breakout_exit_variant_signals,
     bollinger_regime_reversion_signals,
     breakout_signals,
+    breakout_with_funding_veto_signals,
     compression_breakout_signals,
+    compression_breakout_retest_signals,
     ema_crossover_signals,
+    filter_signals_by_adverse_funding,
     funding_conditioned_momentum_signals,
     funding_crowding_reversal_signals,
+    pullback_in_trend_signals,
     rsi_mean_reversion_signals,
     strategy_grid,
     volatility_scaled_momentum_signals,
@@ -120,6 +126,93 @@ def test_compression_breakout_emits_exit_when_atr_trailing_level_breaks() -> Non
     assert any(signal.side == "flat" and signal.entry_reason == "atr_trailing_exit" for signal in signals)
 
 
+def test_compression_breakout_retest_waits_for_pullback_after_break() -> None:
+    candles = strategy_candles([100] * 40 + [105, 100.5, 104, 108])
+    candles.loc[:39, "high"] = 100.0
+    candles.loc[:39, "low"] = 100.0
+    candles.loc[40:, "volume"] = 10.0
+
+    signals = compression_breakout_retest_signals(
+        candles,
+        lookback=20,
+        bandwidth_window=20,
+        compression_quantile=0.5,
+        volume_multiplier=2.0,
+        atr_length=3,
+        retest_atr_buffer=0.75,
+    )
+
+    long_entries = [signal for signal in signals if signal.side == "long"]
+    assert len(long_entries) == 1
+    assert long_entries[0].timestamp == candles.loc[41, "timestamp"]
+    assert long_entries[0].entry_reason == "compressed_range_breakout_retest_long"
+
+
+def test_compression_exit_variant_profit_trail_emits_partial_take_then_trailing_exit() -> None:
+    candles = strategy_candles([100] * 40 + [95, 92, 90, 94, 96])
+    candles.loc[:39, "high"] = 100.0
+    candles.loc[:39, "low"] = 100.0
+    candles.loc[40:, "volume"] = 10.0
+
+    signals = compression_breakout_exit_variant_signals(
+        candles,
+        setup="breakout",
+        lookback=20,
+        bandwidth_window=20,
+        compression_quantile=0.5,
+        volume_multiplier=2.0,
+        atr_length=3,
+        exit_style="profit_trail",
+        profit_take_r=1.0,
+        post_take_trailing_atr=0.5,
+    )
+
+    short_entries = [signal for signal in signals if signal.side == "short"]
+    assert any(signal.exposure_multiplier == 1.0 for signal in short_entries)
+    assert any(signal.exposure_multiplier == 0.5 and signal.entry_reason == "partial_profit_take" for signal in short_entries)
+    assert any(signal.side == "flat" and signal.entry_reason == "atr_trailing_exit" for signal in signals)
+
+
+def test_compression_exit_variant_time_stop_emits_flat_exit_after_hold_limit() -> None:
+    candles = strategy_candles([100] * 40 + [95, 94, 93, 92, 91])
+    candles.loc[:39, "high"] = 100.0
+    candles.loc[:39, "low"] = 100.0
+    candles.loc[40:, "volume"] = 10.0
+
+    signals = compression_breakout_exit_variant_signals(
+        candles,
+        setup="breakout",
+        lookback=20,
+        bandwidth_window=20,
+        compression_quantile=0.5,
+        volume_multiplier=2.0,
+        atr_length=3,
+        exit_style="time_stop_trail",
+        max_hold_bars=2,
+    )
+
+    assert any(signal.side == "flat" and signal.entry_reason == "time_stop_exit" for signal in signals)
+
+
+def test_filter_signals_by_adverse_funding_blocks_only_crowded_side() -> None:
+    candles = strategy_candles([100, 101, 102, 103, 104, 105, 99, 98, 97])
+    candles["funding_rate"] = [0.0, 0.0, 0.0, 0.003, 0.004, 0.005, 0.003, 0.004, 0.005]
+    candles["premium"] = 0.0
+    signals = [
+        Signal(candles.loc[5, "timestamp"], "breakout", {"lookback": 3}, "long", "entry", 104.0),
+        Signal(candles.loc[8, "timestamp"], "breakout", {"lookback": 3}, "short", "entry", 98.0),
+    ]
+
+    filtered = filter_signals_by_adverse_funding(
+        candles,
+        signals,
+        funding_window=3,
+        max_adverse_funding_z=0.5,
+    )
+
+    assert [signal.side for signal in filtered] == ["short"]
+
+
 def test_funding_crowding_reversal_fades_extreme_funding_after_price_reversal() -> None:
     candles = strategy_candles([100, 101, 102, 103, 102, 101, 100, 99])
     candles["funding_rate"] = [0.0, 0.0, 0.0, 0.01, 0.02, 0.01, 0.0, 0.0]
@@ -148,16 +241,51 @@ def test_funding_conditioned_momentum_rejects_crowded_long_but_allows_short() ->
     assert any(signal.side == "short" for signal in signals)
 
 
-def test_strategy_grid_contains_all_eight_families() -> None:
+def test_breakout_funding_veto_skips_adverse_crowded_breakout_but_allows_tailwind_short() -> None:
+    candles = strategy_candles([100, 101, 102, 103, 104, 105, 99, 98, 97])
+    candles["funding_rate"] = [0.0, 0.0, 0.0, 0.003, 0.004, 0.005, 0.003, 0.004, 0.005]
+    candles["premium"] = 0.0
+
+    signals = breakout_with_funding_veto_signals(
+        candles,
+        lookback=3,
+        funding_window=3,
+        max_adverse_funding_z=0.5,
+    )
+
+    assert not any(signal.side == "long" for signal in signals)
+    assert any(signal.side == "short" for signal in signals)
+
+
+def test_pullback_in_trend_enters_with_trend_and_exits_on_trend_failure() -> None:
+    candles = strategy_candles([100, 102, 104, 106, 108, 104, 103, 105, 107, 109, 107, 105, 103])
+
+    signals = pullback_in_trend_signals(
+        candles,
+        fast_length=3,
+        slow_length=5,
+        rsi_length=3,
+        recovery_level=45,
+        invalidation_window=3,
+    )
+
+    assert any(signal.side == "long" for signal in signals)
+    assert any(signal.side == "flat" for signal in signals)
+
+
+def test_strategy_grid_contains_new_families() -> None:
     families = {name for name, _ in strategy_grid(include_funding=True)}
 
     assert families == {
         "ema_crossover",
         "rsi_mean_reversion",
         "breakout",
+        "breakout_funding_veto",
         "volatility_scaled_momentum",
         "bollinger_regime_reversion",
         "compression_breakout",
+        "compression_breakout_retest",
         "funding_crowding_reversal",
         "funding_conditioned_momentum",
+        "pullback_in_trend",
     }

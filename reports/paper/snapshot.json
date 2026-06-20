@@ -1,0 +1,38 @@
+{
+  "strategy_name": "compression_breakout",
+  "params": {
+    "lookback": 48,
+    "bandwidth_window": 100,
+    "compression_quantile": 0.2,
+    "volume_multiplier": 1.25,
+    "atr_length": 14,
+    "regime_filter": null
+  },
+  "generated_at": "2026-06-20T10:11:33.955830+00:00",
+  "candle_count": 4321,
+  "last_candle_time": "2026-06-20T10:00:00+00:00",
+  "last_close": 63661.0,
+  "cash_equity": 1080.5498619668176,
+  "marked_equity": 1080.5498619668176,
+  "closed_trade_count": 14,
+  "wins": 7,
+  "losses": 7,
+  "open_position": null,
+  "pending_signal": null,
+  "latest_signal": {
+    "timestamp": "2026-06-15T21:00:00+00:00",
+    "strategy_name": "compression_breakout",
+    "params": {
+      "lookback": 48,
+      "bandwidth_window": 100,
+      "compression_quantile": 0.2,
+      "volume_multiplier": 1.25,
+      "atr_length": 14
+    },
+    "side": "flat",
+    "entry_reason": "atr_trailing_exit",
+    "invalidation_price": 66448.29789173334,
+    "exposure_multiplier": 1.0
+  },
+  "notes": "Current best holdout winner from the lab: plain short-side compression breakout."
+}

@@ -11,6 +11,7 @@ from tradebot_backtest.engine import Signal
 from tradebot_backtest.regime import (
     RegimeParams,
     classify_regime,
+    filter_entry_signals_by_regime,
     regime_features,
     regime_parameter_grid,
     regime_switching_signals,
@@ -166,14 +167,21 @@ def test_regime_params_are_frozen() -> None:
 def test_regime_features_produce_expected_columns_and_ranges() -> None:
     features = regime_features(synthetic_candles())
 
-    assert list(features.columns) == [
+    expected = {
         "timestamp",
+        "close",
         "atr14",
         "adx14",
         "ema50",
+        "ema200",
         "normalized_ema_slope",
+        "normalized_ema200_slope",
+        "trend_gap_atr",
+        "distance_from_ema50_atr",
         "atr_percentile",
-    ]
+        "volume_ratio",
+    }
+    assert expected.issubset(features.columns)
     mature = features.dropna()
     assert not mature.empty
     assert mature["atr14"].gt(0).all()
@@ -245,6 +253,75 @@ def test_high_volatility_has_priority_over_trending() -> None:
     )
 
     assert regime == "high_volatility"
+
+
+def test_filter_entry_signals_by_regime_keeps_only_trend_aligned_entries() -> None:
+    candles = router_candles(4)
+    signals = [
+        Signal(candles.loc[0, "timestamp"], "breakout", {"lookback": 20}, "long", "entry", 99.0),
+        Signal(candles.loc[1, "timestamp"], "breakout", {"lookback": 20}, "short", "entry", 101.0),
+        Signal(candles.loc[2, "timestamp"], "breakout", {"lookback": 20}, "flat", "exit", 100.0),
+    ]
+    features = pd.DataFrame(
+        {
+            "timestamp": candles["timestamp"],
+            "close": candles["close"],
+            "atr14": [1.0] * 4,
+            "adx14": [30.0, 30.0, 30.0, 30.0],
+            "ema50": candles["close"],
+            "ema200": candles["close"] - 2.0,
+            "normalized_ema_slope": [1.0, 1.0, 1.0, 1.0],
+            "distance_from_ema50_atr": [0.5, 0.5, 0.5, 0.5],
+            "atr_percentile": [0.5, 0.5, 0.5, 0.5],
+            "volume_ratio": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    filtered = filter_entry_signals_by_regime(
+        signals,
+        features,
+        min_adx=20.0,
+        min_abs_slope=0.5,
+        min_atr_percentile=0.2,
+        max_atr_percentile=0.8,
+        require_trend_alignment=True,
+    )
+
+    assert [signal.side for signal in filtered] == ["long", "flat"]
+
+
+def test_filter_entry_signals_by_regime_blocks_entries_outside_volatility_band() -> None:
+    candles = router_candles(3)
+    signals = [
+        Signal(candles.loc[0, "timestamp"], "breakout", {}, "long", "entry", 99.0),
+        Signal(candles.loc[1, "timestamp"], "breakout", {}, "short", "entry", 101.0),
+    ]
+    features = pd.DataFrame(
+        {
+            "timestamp": candles["timestamp"],
+            "close": candles["close"],
+            "atr14": [1.0] * 3,
+            "adx14": [30.0, 30.0, 30.0],
+            "ema50": candles["close"],
+            "ema200": candles["close"] - 2.0,
+            "normalized_ema_slope": [1.0, -1.0, 0.0],
+            "distance_from_ema50_atr": [0.5, 0.5, 0.5],
+            "atr_percentile": [0.1, 0.95, 0.5],
+            "volume_ratio": [1.0, 1.0, 1.0],
+        }
+    )
+
+    filtered = filter_entry_signals_by_regime(
+        signals,
+        features,
+        min_adx=20.0,
+        min_abs_slope=0.5,
+        min_atr_percentile=0.2,
+        max_atr_percentile=0.8,
+        require_trend_alignment=False,
+    )
+
+    assert filtered == []
 
 
 def test_classifier_covers_trending_ranging_and_unclear() -> None:

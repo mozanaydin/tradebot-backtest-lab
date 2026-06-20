@@ -57,20 +57,32 @@ def regime_features(candles: pd.DataFrame) -> pd.DataFrame:
     adx14 = _wilder_average(dx, 14)
 
     ema50 = close.ewm(span=50, adjust=False).mean()
+    ema200 = close.ewm(span=200, adjust=False).mean()
     normalized_slope = (ema50 - ema50.shift(12)) / atr14.replace(0, np.nan)
+    ema200_slope = (ema200 - ema200.shift(24)) / atr14.replace(0, np.nan)
+    trend_gap_atr = (ema50 - ema200) / atr14.replace(0, np.nan)
+    distance_from_ema50_atr = (close - ema50).abs() / atr14.replace(0, np.nan)
     atr_percentile = atr14.rolling(169, min_periods=169).apply(
         _rank_latest_against_previous,
         raw=True,
     )
+    average_volume = candles["volume"].astype(float).rolling(20, min_periods=20).mean() if "volume" in candles.columns else pd.Series(np.nan, index=candles.index)
+    volume_ratio = candles["volume"].astype(float) / average_volume.replace(0, np.nan) if "volume" in candles.columns else pd.Series(np.nan, index=candles.index)
 
     return pd.DataFrame(
         {
             "timestamp": candles["timestamp"],
+            "close": close,
             "atr14": atr14,
             "adx14": adx14,
             "ema50": ema50,
+            "ema200": ema200,
             "normalized_ema_slope": normalized_slope,
+            "normalized_ema200_slope": ema200_slope,
+            "trend_gap_atr": trend_gap_atr,
+            "distance_from_ema50_atr": distance_from_ema50_atr,
             "atr_percentile": atr_percentile,
+            "volume_ratio": volume_ratio,
         },
         index=candles.index,
     )
@@ -254,6 +266,73 @@ def regime_parameter_grid() -> list[RegimeParams]:
         if configured.range_adx < configured.trend_adx:
             grid.append(configured)
     return grid
+
+
+def filter_entry_signals_by_regime(
+    signals: list[Signal],
+    features: pd.DataFrame,
+    *,
+    min_adx: float,
+    min_abs_slope: float,
+    min_atr_percentile: float,
+    max_atr_percentile: float,
+    require_trend_alignment: bool,
+    require_price_above_ema200: bool = False,
+    require_ema_stack: bool = False,
+    max_distance_from_ema50_atr: float | None = None,
+    min_volume_ratio: float | None = None,
+) -> list[Signal]:
+    if not signals:
+        return []
+    feature_by_time = {
+        pd.Timestamp(row["timestamp"]): row
+        for _, row in features.iterrows()
+    }
+    filtered: list[Signal] = []
+    for signal in signals:
+        if signal.side == "flat":
+            filtered.append(signal)
+            continue
+        row = feature_by_time.get(pd.Timestamp(signal.timestamp))
+        if row is None:
+            continue
+        atr_percentile = float(row["atr_percentile"])
+        adx = float(row["adx14"])
+        slope = float(row["normalized_ema_slope"])
+        close_price = float(row["close"])
+        ema50 = float(row["ema50"])
+        ema200 = float(row["ema200"])
+        distance_from_ema50_atr = float(row["distance_from_ema50_atr"])
+        volume_ratio = float(row["volume_ratio"]) if not pd.isna(row["volume_ratio"]) else float("nan")
+        if pd.isna(atr_percentile) or pd.isna(adx) or pd.isna(slope) or pd.isna(close_price) or pd.isna(ema50) or pd.isna(ema200):
+            continue
+        if adx < min_adx or abs(slope) < min_abs_slope:
+            continue
+        if atr_percentile < min_atr_percentile or atr_percentile > max_atr_percentile:
+            continue
+        if require_trend_alignment:
+            if signal.side == "long" and slope <= 0:
+                continue
+            if signal.side == "short" and slope >= 0:
+                continue
+        if require_price_above_ema200:
+            if signal.side == "long" and close_price <= ema200:
+                continue
+            if signal.side == "short" and close_price >= ema200:
+                continue
+        if require_ema_stack:
+            if signal.side == "long" and not (ema50 > ema200):
+                continue
+            if signal.side == "short" and not (ema50 < ema200):
+                continue
+        if max_distance_from_ema50_atr is not None:
+            if pd.isna(distance_from_ema50_atr) or distance_from_ema50_atr > max_distance_from_ema50_atr:
+                continue
+        if min_volume_ratio is not None:
+            if pd.isna(volume_ratio) or volume_ratio < min_volume_ratio:
+                continue
+        filtered.append(signal)
+    return filtered
 
 
 def _component_for_regime(regime: Regime) -> Component:

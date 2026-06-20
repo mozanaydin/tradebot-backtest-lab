@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tradebot Long History Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --bg-soft: #101b2d;
+      --panel: #122033;
+      --panel-strong: #16263b;
+      --border: #24364f;
+      --text: #e5eef9;
+      --muted: #9eb0c8;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #f97316;
+      --accent: #60a5fa;
+      --accent-soft: #dbeafe;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: Inter, Arial, sans-serif; background: linear-gradient(180deg, #07111f 0%, #0d1727 100%); color: var(--text); margin: 0; }
+    main { max-width: 1280px; margin: 0 auto; padding: 32px 24px 80px; }
+    h1, h2, h3 { margin: 0; }
+    p { margin: 0; line-height: 1.5; }
+    .hero { display:grid; grid-template-columns: 1.3fr .7fr; gap: 18px; margin-bottom: 20px; }
+    .hero-card, .panel { background: rgba(18, 32, 51, 0.92); border: 1px solid var(--border); border-radius: 8px; padding: 22px; }
+    .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); margin-bottom: 12px; }
+    .hero h1 { font-size: 34px; margin-bottom: 12px; }
+    .hero p { color: var(--muted); }
+    .pill-row { display:flex; flex-wrap:wrap; gap:10px; margin-top: 16px; }
+    .pill { padding:8px 12px; border-radius:999px; background: #0e1930; border:1px solid var(--border); color: var(--muted); font-size: 13px; }
+    .tabs { display:flex; gap:10px; margin-bottom: 18px; }
+    .tab { padding:10px 14px; border-radius:999px; background:#0d1930; border:1px solid var(--border); color:var(--muted); cursor:pointer; font-size:14px; }
+    .tab.active { background: var(--accent); color:#08111e; border-color: transparent; font-weight: 600; }
+    .view { display:none; }
+    .view.active { display:block; }
+    .summary-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .metric { background: var(--panel-strong); border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-height: 120px; }
+    .metric-label { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+    .metric strong { display:block; font-size: 30px; margin-bottom: 8px; }
+    .metric.good strong { color: var(--good); }
+    .metric.warn strong { color: var(--warn); }
+    .metric.bad strong { color: var(--bad); }
+    .metric p { color: var(--muted); font-size: 13px; }
+    .explain-grid { display:grid; grid-template-columns: 1.1fr .9fr; gap: 14px; margin-bottom: 18px; }
+    .stack { display:grid; gap:14px; }
+    .panel h2 { font-size: 22px; margin-bottom: 12px; }
+    .panel h3 { font-size: 17px; margin-bottom: 8px; }
+    .panel-copy { color: var(--muted); margin-bottom: 14px; }
+    .signal-list { display:grid; gap:10px; }
+    .signal-item { padding:12px 14px; border-radius:8px; background:#0e1930; border:1px solid var(--border); }
+    .signal-item strong { display:block; margin-bottom:4px; }
+    .friendly-table { width:100%; border-collapse: collapse; font-size:14px; }
+    .friendly-table th, .friendly-table td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align: top; }
+    .friendly-table th { color: var(--accent-soft); font-weight: 600; }
+    .friendly-table td { color: var(--text); }
+    .note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+    .link-row { display:flex; flex-wrap:wrap; gap:12px; margin-top: 14px; }
+    .link-button { display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:8px; background:#0d1930; border:1px solid var(--border); color:var(--text); text-decoration:none; }
+    .deep-grid { display:grid; grid-template-columns: 1fr; gap: 14px; }
+    .warning-box { background: rgba(249, 115, 22, 0.1); border:1px solid rgba(249, 115, 22, 0.35); border-radius:8px; padding:14px; color:#ffd3b0; }
+    .bar-stack { display:grid; gap:10px; margin-top: 8px; }
+    .bar-row { display:grid; grid-template-columns: 180px 1fr 80px; gap:12px; align-items:center; }
+    .bar-label, .bar-value { font-size: 13px; color: var(--muted); }
+    .bar-track { position:relative; height:18px; border-radius:999px; background:#091425; border:1px solid var(--border); overflow:hidden; }
+    .bar { position:absolute; top:0; bottom:0; border-radius:999px; }
+    .bar-mid { left:50%; width:1px; background: rgba(255,255,255,0.2); }
+    .bar.pos { background: linear-gradient(90deg, #34d399, #22c55e); }
+    .bar.neg { background: linear-gradient(90deg, #fb923c, #f97316); }
+    .trade-card-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:14px; }
+    .trade-card { border:1px solid var(--border); border-radius:8px; background:#0e1930; padding:16px; }
+    .trade-card.win { box-shadow: inset 0 0 0 1px rgba(34,197,94,0.12); }
+    .trade-card.loss { box-shadow: inset 0 0 0 1px rgba(249,115,22,0.12); }
+    .trade-card-top { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:14px; }
+    .trade-title { font-size:15px; font-weight:600; }
+    .trade-subtitle { font-size:13px; color:var(--muted); margin-top:4px; }
+    .trade-pnl { font-size:22px; font-weight:700; white-space:nowrap; }
+    .trade-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
+    .trade-grid span { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .trade-grid strong { display:block; font-size:14px; }
+    @media (max-width: 980px) {
+      .hero, .summary-grid, .explain-grid { grid-template-columns: 1fr; }
+      .trade-card-grid, .trade-grid, .bar-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="hero-card">
+        <div class="eyebrow">Tradebot Backtest Report</div>
+        <h1>Simple first, deep detail when you want it</h1>
+        <p>This page explains our 3-year BTC strategy test in normal language. You do not need to know trading terms to understand the main result.</p>
+        <div class="pill-row">
+          <div class="pill">Data source: Binance BTC perpetual proxy</div>
+          <div class="pill">Timeframe: 1 hour candles</div>
+          <div class="pill">Window: 3 years</div>
+          <div class="pill">Experiments tested: 344</div>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="eyebrow">Quick Verdict</div>
+        <h2 style="font-size:28px; margin-bottom:10px;">Promising</h2>
+        <p>This version held up reasonably well on fresh unseen data.</p>
+        <div class="link-row">
+          <a class="link-button" href="equity_curves.html">Open Equity Curves</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="tabs">
+      <button class="tab active" data-view-target="simple-view" onclick="setView('simple-view', this)">Simple View</button>
+      <button class="tab" data-view-target="deep-view" onclick="setView('deep-view', this)">Deep View</button>
+    </div>
+
+    <section id="simple-view" class="view active">
+      <div class="summary-grid">
+        <div class="metric good">
+          <div class="metric-label">Final reality check</div>
+          <strong>8.1%</strong>
+          <p>This is the best unseen-data result from the finalists. Negative means it still lost money.</p>
+        </div>
+        <div class="metric warn">
+          <div class="metric-label">Best-looking idea in practice</div>
+          <strong>Compression Breakout Retest with 48-bar setup</strong>
+          <p>Compression Breakout Retest with 48-bar setup, trading both, during all hours, risking about 0.50% per trade.</p>
+        </div>
+        <div class="metric good">
+          <div class="metric-label">How stable it looked in practice</div>
+          <strong>3/3 good rounds</strong>
+          <p>3/3 still looked okay after higher trading costs.</p>
+        </div>
+        <div class="metric warn">
+          <div class="metric-label">Worst drop during final test</div>
+          <strong>2.2%</strong>
+          <p>This is how far the account sank from a high point during the final check.</p>
+        </div>
+      </div>
+
+      <div class="explain-grid">
+        <div class="stack">
+          <section class="panel">
+            <h2>What this means in plain English</h2>
+            <p class="panel-copy">This version held up reasonably well on fresh unseen data.</p>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>Best practice-round setup</strong>
+                <span>Compression Breakout Retest with 48-bar setup, trading both, during all hours, risking about 0.50% per trade.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Why that looked promising</strong>
+                <span>It stayed positive across all 3 practice rounds and also survived tougher cost assumptions.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Why we are still cautious</strong>
+                <span>The final test finally made money, but the practice-round winner and the final winner were different, so we still need one more round of confirmation.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>What should we do next?</h2>
+            <p class="panel-copy">Keep this family, then test tighter market-condition rules before risking real money.</p>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>Keep</strong>
+                <span>Compression Breakout with 48-bar setup is the first setup here that passed the final unseen-data check with a positive result.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Change</strong>
+                <span>Add smarter market-structure rules on top of compression breakout with 48-bar setup instead of endlessly tweaking trade size and settings.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Avoid</strong>
+                <span>Do not treat the current bot as live-trading ready yet.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>How We Keep Ourselves Honest</h2>
+            <p class="panel-copy">We now ignore flashy low-sample ideas unless they trade enough times to be worth taking seriously.</p>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>Minimum validation trades</strong>
+                <span>20 trades across the validation rounds.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Why this matters</strong>
+                <span>A setup that looks great on only a handful of trades can be luck, not a real edge.</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section class="panel">
+            <h2>Beginner Cheat Sheet</h2>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>Practice rounds</strong>
+                <span>Older chunks of history we used to rank ideas before the final test.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Final reality check</strong>
+                <span>Fresh unseen history. This is the score that matters most.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Worst drop</strong>
+                <span>How painful the ride got before recovering, or before ending.</span>
+              </div>
+              <div class="signal-item">
+                <strong>Win rate</strong>
+                <span>How often trades made money. A high win rate alone does not guarantee a good strategy.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>Fast Links</h2>
+            <p class="panel-copy">Open the raw details only if you want to dig deeper.</p>
+            <div class="link-row">
+              <a class="link-button" href="equity_curves.html">Equity Curves</a>
+              <a class="link-button" href="../leaderboard.csv">Leaderboard CSV</a>
+              <a class="link-button" href="../holdout_summary.csv">Holdout Summary CSV</a>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2>Top Ideas, Explained Simply</h2>
+        <p class="panel-copy">These are the best-looking setups from the practice rounds. This is not the same as “best live strategy.”</p>
+        <table class="dataframe friendly-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Strategy Idea</th>
+      <th>Practice Result</th>
+      <th>Worst Pain</th>
+      <th>Trades</th>
+      <th>Consistency</th>
+      <th>Why It Ranked Here</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Compression Breakout Retest with 48-bar setup</td>
+      <td>3.5%</td>
+      <td>2.2%</td>
+      <td>33</td>
+      <td>3/3 good rounds, 3/3 after higher costs</td>
+      <td>Stable across all practice rounds</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest with 48-bar setup</td>
+      <td>2.8%</td>
+      <td>2.1%</td>
+      <td>33</td>
+      <td>3/3 good rounds, 3/3 after higher costs</td>
+      <td>Stable across all practice rounds</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout with 48-bar setup</td>
+      <td>1.9%</td>
+      <td>1.9%</td>
+      <td>23</td>
+      <td>3/3 good rounds, 3/3 after higher costs</td>
+      <td>Stable across all practice rounds</td>
+    </tr>
+    <tr>
+      <td>Pullback In Trend with 50/200 trend lengths</td>
+      <td>6.3%</td>
+      <td>11.3%</td>
+      <td>70</td>
+      <td>2/3 good rounds, 2/3 after higher costs</td>
+      <td>Good, but less stable under tougher assumptions</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum with 48-bar setup</td>
+      <td>6.2%</td>
+      <td>7.7%</td>
+      <td>327</td>
+      <td>2/3 good rounds, 2/3 after higher costs</td>
+      <td>Good, but less stable under tougher assumptions</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum with 48-bar setup</td>
+      <td>5.5%</td>
+      <td>8.3%</td>
+      <td>370</td>
+      <td>2/3 good rounds, 2/3 after higher costs</td>
+      <td>Good, but less stable under tougher assumptions</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum with 48-bar setup</td>
+      <td>5.4%</td>
+      <td>8.2%</td>
+      <td>303</td>
+      <td>2/3 good rounds, 2/3 after higher costs</td>
+      <td>Good, but less stable under tougher assumptions</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum with 48-bar setup</td>
+      <td>5.3%</td>
+      <td>8.2%</td>
+      <td>370</td>
+      <td>2/3 good rounds, 2/3 after higher costs</td>
+      <td>Good, but less stable under tougher assumptions</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section class="panel">
+        <h2>Validation Winner vs Final Winner</h2>
+        <p class="panel-copy">The best practice-round setup and the best fresh-data setup were not the same. This section keeps that difference obvious.</p>
+        <div class="signal-list">
+          <div class="signal-item">
+            <strong>Validation winner</strong>
+            <span>Compression Breakout Retest with 48-bar setup, trading both, during all hours, risking about 0.50% per trade.</span>
+          </div>
+          <div class="signal-item">
+            <strong>Final holdout winner</strong>
+            <span>Compression Breakout with 48-bar setup is the first setup here that passed the final unseen-data check with a positive result.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Short-Side Showdown</h2>
+        <p class="panel-copy">This compares the strongest short compression idea against the short retest candidates so we can see whether waiting for the retest actually helps in the final unseen period.</p>
+        <table class="dataframe friendly-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Strategy Idea</th>
+      <th>Holdout Return</th>
+      <th>Worst Drop</th>
+      <th>Win Rate</th>
+      <th>Trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Compression Breakout with 48-bar setup</td>
+      <td>8.1%</td>
+      <td>2.2%</td>
+      <td>52.6%</td>
+      <td>19</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest with 24-bar setup</td>
+      <td>6.4%</td>
+      <td>4.1%</td>
+      <td>32.1%</td>
+      <td>28</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest with 24-bar setup</td>
+      <td>1.4%</td>
+      <td>2.2%</td>
+      <td>46.3%</td>
+      <td>41</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest with 48-bar setup</td>
+      <td>2.3%</td>
+      <td>3.9%</td>
+      <td>38.5%</td>
+      <td>13</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section class="panel">
+        <h2>Short-Side Regime Filter Showdown</h2>
+        <p class="panel-copy">This compares the plain short compression winner against regime-gated short versions, so we can see whether trading only in certain market states improves the fresh-data result.</p>
+        <table class="dataframe friendly-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Strategy Idea</th>
+      <th>Filter</th>
+      <th>Holdout Return</th>
+      <th>Worst Drop</th>
+      <th>Trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Compression Breakout with 48-bar setup</td>
+      <td>none</td>
+      <td>8.1%</td>
+      <td>2.2%</td>
+      <td>19</td>
+    </tr>
+  </tbody>
+</table>
+      </section>
+
+      <section class="panel">
+        <h2>How The Finalists Performed</h2>
+        <p class="panel-copy">Bars to the right mean profit. Bars to the left mean loss. This lets you see quickly whether any finalist really held up on fresh unseen data.</p>
+        <div class="bar-stack">
+          
+            <div class="bar-row">
+              <div class="bar-label">Compression Breakout</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar pos" style="left:50.00%; width:100.00%"></div>
+              </div>
+              <div class="bar-value">8.1%</div>
+            </div>
+            
+            <div class="bar-row">
+              <div class="bar-label">Compression Breakout Retest</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar pos" style="left:50.00%; width:9.97%"></div>
+              </div>
+              <div class="bar-value">0.8%</div>
+            </div>
+            
+            <div class="bar-row">
+              <div class="bar-label">Compression Breakout Retest</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar pos" style="left:50.00%; width:6.00%"></div>
+              </div>
+              <div class="bar-value">0.5%</div>
+            </div>
+            
+            <div class="bar-row">
+              <div class="bar-label">Volatility Scaled Momentum</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar neg" style="left:-12.73%; width:62.73%"></div>
+              </div>
+              <div class="bar-value">-5.1%</div>
+            </div>
+            
+            <div class="bar-row">
+              <div class="bar-label">Volatility Scaled Momentum</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar neg" style="left:-20.60%; width:70.60%"></div>
+              </div>
+              <div class="bar-value">-5.7%</div>
+            </div>
+            
+            <div class="bar-row">
+              <div class="bar-label">Volatility Scaled Momentum</div>
+              <div class="bar-track">
+                <div class="bar bar-mid"></div>
+                <div class="bar neg" style="left:-25.34%; width:75.34%"></div>
+              </div>
+              <div class="bar-value">-6.1%</div>
+            </div>
+            
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Trade Examples From Testing</h2>
+        <p class="panel-copy">A few real trades from the final test set, including investment size, outcome, and why the bot got out.</p>
+        <div class="trade-card-grid">
+          
+            <article class="trade-card win">
+              <div class="trade-card-top">
+                <div>
+                  <div class="trade-title">Volatility Scaled Momentum • Short</div>
+                  <div class="trade-subtitle">2026-06-01 06:00 UTC → 2026-06-07 07:00 UTC</div>
+                </div>
+                <div class="trade-pnl">+59.98 USD</div>
+              </div>
+              <div class="trade-grid">
+                <div><span>Investment size</span><strong>395 USD</strong></div>
+                <div><span>Trade return</span><strong>+15.20%</strong></div>
+                <div><span>Entry → exit</span><strong>73,320 → 62,080</strong></div>
+                <div><span>Held for</span><strong>145.0 hours</strong></div>
+                <div><span>Fees + funding</span><strong>0.51 + 0.00</strong></div>
+                <div><span>Exit reason</span><strong>positive momentum</strong></div>
+              </div>
+            </article>
+            
+            <article class="trade-card loss">
+              <div class="trade-card-top">
+                <div>
+                  <div class="trade-title">Pullback In Trend • Short</div>
+                  <div class="trade-subtitle">2026-02-12 13:00 UTC → 2026-02-12 14:00 UTC</div>
+                </div>
+                <div class="trade-pnl">-13.82 USD</div>
+              </div>
+              <div class="trade-grid">
+                <div><span>Investment size</span><strong>1,573 USD</strong></div>
+                <div><span>Trade return</span><strong>-0.88%</strong></div>
+                <div><span>Entry → exit</span><strong>67,832 → 68,340</strong></div>
+                <div><span>Held for</span><strong>1.0 hours</strong></div>
+                <div><span>Fees + funding</span><strong>2.05 + 0.00</strong></div>
+                <div><span>Exit reason</span><strong>invalidation close</strong></div>
+              </div>
+            </article>
+            
+            <article class="trade-card loss">
+              <div class="trade-card-top">
+                <div>
+                  <div class="trade-title">Volatility Scaled Momentum • Long</div>
+                  <div class="trade-subtitle">2026-04-26 15:00 UTC → 2026-04-27 16:00 UTC</div>
+                </div>
+                <div class="trade-pnl">-11.41 USD</div>
+              </div>
+              <div class="trade-grid">
+                <div><span>Investment size</span><strong>639 USD</strong></div>
+                <div><span>Trade return</span><strong>-1.79%</strong></div>
+                <div><span>Entry → exit</span><strong>78,054 → 76,760</strong></div>
+                <div><span>Held for</span><strong>25.0 hours</strong></div>
+                <div><span>Fees + funding</span><strong>0.83 + 0.00</strong></div>
+                <div><span>Exit reason</span><strong>invalidation close</strong></div>
+              </div>
+            </article>
+            
+            <article class="trade-card win">
+              <div class="trade-card-top">
+                <div>
+                  <div class="trade-title">Volatility Scaled Momentum • Long</div>
+                  <div class="trade-subtitle">2026-06-11 09:00 UTC → 2026-06-11 21:00 UTC</div>
+                </div>
+                <div class="trade-pnl">+1.77 USD</div>
+              </div>
+              <div class="trade-grid">
+                <div><span>Investment size</span><strong>243 USD</strong></div>
+                <div><span>Trade return</span><strong>+0.73%</strong></div>
+                <div><span>Entry → exit</span><strong>62,927 → 63,466</strong></div>
+                <div><span>Held for</span><strong>12.0 hours</strong></div>
+                <div><span>Fees + funding</span><strong>0.32 + 0.00</strong></div>
+                <div><span>Exit reason</span><strong>end of data</strong></div>
+              </div>
+            </article>
+            
+            <article class="trade-card loss">
+              <div class="trade-card-top">
+                <div>
+                  <div class="trade-title">Compression Breakout Retest • Long</div>
+                  <div class="trade-subtitle">2026-06-11 19:00 UTC → 2026-06-11 21:00 UTC</div>
+                </div>
+                <div class="trade-pnl">-0.21 USD</div>
+              </div>
+              <div class="trade-grid">
+                <div><span>Investment size</span><strong>314 USD</strong></div>
+                <div><span>Trade return</span><strong>-0.07%</strong></div>
+                <div><span>Entry → exit</span><strong>63,426 → 63,466</strong></div>
+                <div><span>Held for</span><strong>2.0 hours</strong></div>
+                <div><span>Fees + funding</span><strong>0.41 + 0.00</strong></div>
+                <div><span>Exit reason</span><strong>end of data</strong></div>
+              </div>
+            </article>
+            
+        </div>
+      </section>
+    </section>
+
+    <section id="deep-view" class="view">
+      <div class="deep-grid">
+        <section class="panel">
+          <h2>Finalist Holdout Results</h2>
+          <p class="panel-copy">This is the final unseen-data comparison for the top-ranked ideas.</p>
+          <div class="warning-box">Important: even the best finalist still lost money in the final reality check. That means the research got better, but the bot is not ready yet.</div>
+          <div style="margin-top:14px;">
+            <table class="dataframe friendly-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Strategy Idea</th>
+      <th>Final Reality Check</th>
+      <th>Worst Drop</th>
+      <th>Win Rate</th>
+      <th>Trades</th>
+      <th>Verdict</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Compression Breakout</td>
+      <td>8.1%</td>
+      <td>2.2%</td>
+      <td>52.6%</td>
+      <td>19</td>
+      <td>Best of the bunch</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest</td>
+      <td>0.8%</td>
+      <td>5.1%</td>
+      <td>50.0%</td>
+      <td>20</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Compression Breakout Retest</td>
+      <td>0.5%</td>
+      <td>4.8%</td>
+      <td>46.9%</td>
+      <td>32</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum</td>
+      <td>-5.1%</td>
+      <td>13.4%</td>
+      <td>25.9%</td>
+      <td>340</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum</td>
+      <td>-5.7%</td>
+      <td>13.6%</td>
+      <td>24.5%</td>
+      <td>298</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum</td>
+      <td>-6.1%</td>
+      <td>14.3%</td>
+      <td>26.0%</td>
+      <td>350</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum</td>
+      <td>-6.4%</td>
+      <td>14.4%</td>
+      <td>25.5%</td>
+      <td>310</td>
+      <td>Worse than the leader</td>
+    </tr>
+    <tr>
+      <td>Volatility Scaled Momentum</td>
+      <td>-6.9%</td>
+      <td>14.8%</td>
+      <td>25.2%</td>
+      <td>321</td>
+      <td>Worse than the leader</td>
+    </tr>
+  </tbody>
+</table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>How The Ranking Worked</h2>
+          <div class="signal-list">
+            <div class="signal-item">
+              <strong>Step 1: Practice rounds</strong>
+              <span>Each setup was tested on multiple historical slices to see whether it behaved consistently.</span>
+            </div>
+            <div class="signal-item">
+              <strong>Step 2: Tougher costs</strong>
+              <span>We re-tested with harsher trading-cost assumptions to see which ideas were fragile.</span>
+            </div>
+            <div class="signal-item">
+              <strong>Step 3: Final unseen period</strong>
+              <span>We then checked the finalists on fresh data they had not been ranked on.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script>
+    function setView(viewId, button) {
+      document.querySelectorAll('.view').forEach((node) => node.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach((node) => node.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+      button.classList.add('active');
+    }
+  </script>
+</body>
+</html>
