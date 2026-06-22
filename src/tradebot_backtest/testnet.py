@@ -203,13 +203,20 @@ def sync_best_strategy_to_testnet(
     order_size_btc: float | None = None
     order_notional_usd: float | None = None
 
-    if live_side == "long":
+    if live_side == "long" and desired_state == "flat":
         action = "close_long"
-        action_reason = "best strategy is short-only, so any live long is flattened"
     elif live_side == "short" and desired_state == "flat":
         action = "close_short"
+    elif live_side == "long" and desired_state == "short":
+        action = "close_long"
+        action_reason = "strategy flipped from long to short; flatten first and enter short on the next sync"
+    elif live_side == "short" and desired_state == "long":
+        action = "close_short"
+        action_reason = "strategy flipped from short to long; flatten first and enter long on the next sync"
     elif live_side == "flat" and desired_state == "short":
         action = "open_short"
+    elif live_side == "flat" and desired_state == "long":
+        action = "open_long"
 
     if action == "hold":
         return TestnetSyncResult(
@@ -226,12 +233,12 @@ def sync_best_strategy_to_testnet(
         )
 
     exchange = _build_exchange(credentials)
-    if action in {"open_short", "close_short", "close_long"}:
+    if action in {"open_short", "open_long", "close_short", "close_long"}:
         exchange.update_leverage(leverage, "BTC", is_cross=True)
 
-    if action == "open_short":
+    if action in {"open_short", "open_long"}:
         if reference_signal is None:
-            raise RuntimeError("cannot size open_short action without a reference signal")
+            raise RuntimeError(f"cannot size {action} action without a reference signal")
         config = best_strategy_config(starting_balance=account_snapshot.account_value)
         current_price = account_snapshot.mark_price
         order_notional_usd = _notional_for_signal(
@@ -247,7 +254,7 @@ def sync_best_strategy_to_testnet(
                 paper_snapshot=paper_snapshot,
                 account_snapshot=account_snapshot,
                 desired_state=desired_state,
-                action="skip_open_short",
+                action=f"skip_{action}",
                 action_reason="risk sizing rejected this entry because the stop distance is too small versus costs",
                 executed=execute,
                 order_size_btc=None,
@@ -261,7 +268,7 @@ def sync_best_strategy_to_testnet(
                 paper_snapshot=paper_snapshot,
                 account_snapshot=account_snapshot,
                 desired_state=desired_state,
-                action="skip_open_short",
+                action=f"skip_{action}",
                 action_reason="size rounded down to zero at the exchange lot size",
                 executed=execute,
                 order_size_btc=0.0,
@@ -269,7 +276,7 @@ def sync_best_strategy_to_testnet(
                 response=None,
             )
         if execute:
-            response = exchange.market_open("BTC", is_buy=False, sz=order_size_btc, slippage=slippage)
+            response = exchange.market_open("BTC", is_buy=action == "open_long", sz=order_size_btc, slippage=slippage)
     elif action in {"close_short", "close_long"} and execute:
         response = exchange.market_close("BTC", slippage=slippage)
 
@@ -304,18 +311,28 @@ def run_testnet_worker(
     extend_hours_if_no_trades: float,
     min_account_value: float,
     telegram: TelegramConfig | None = None,
+    notify_startup: bool = False,
+    notify_extensions: bool = False,
+    status_interval_hours: float = 4.0,
 ) -> TestnetWorkerSummary:
     started_at = pd.Timestamp.now(tz="UTC")
     deadline = started_at + pd.Timedelta(hours=duration_hours)
+    next_status_at = started_at + pd.Timedelta(hours=status_interval_hours) if status_interval_hours > 0 else None
     extension_used = False
     cycles = 0
     executed_actions = 0
     initial_account_value: float | None = None
     final_account_value = 0.0
     event_log_path = reports_dir / "worker_events.jsonl"
+    summary_path = reports_dir / "worker_summary.json"
     stop_reason = "time window complete"
 
-    if telegram is not None:
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    event_log_path.write_text("", encoding="utf-8")
+    if summary_path.exists():
+        summary_path.unlink()
+
+    if telegram is not None and notify_startup:
         send_telegram_message(
             telegram,
             format_telegram_worker_event(
@@ -348,7 +365,7 @@ def run_testnet_worker(
             initial_account_value = result.account_snapshot.account_value
         final_account_value = result.account_snapshot.account_value
 
-        if execute and result.action in {"open_short", "close_short", "close_long"} and result.response is not None:
+        if execute and result.action in {"open_long", "open_short", "close_short", "close_long"} and result.response is not None:
             executed_actions += 1
             if telegram is not None:
                 send_telegram_message(telegram, format_telegram_sync_message(result))
@@ -377,7 +394,7 @@ def run_testnet_worker(
             extension_used=extension_used,
             extend_hours_if_no_trades=extend_hours_if_no_trades,
         )
-        if status == "extended" and telegram is not None:
+        if status == "extended" and telegram is not None and notify_extensions:
             send_telegram_message(
                 telegram,
                 format_telegram_worker_event(
@@ -391,6 +408,19 @@ def run_testnet_worker(
         elif status == "complete":
             stop_reason = "time window complete"
             break
+
+        if telegram is not None and next_status_at is not None and now >= next_status_at:
+            send_telegram_message(
+                telegram,
+                format_telegram_worker_status(
+                    result.account_snapshot,
+                    desired_state=result.desired_state,
+                    deadline=deadline,
+                    now=now,
+                    cycles=cycles,
+                ),
+            )
+            next_status_at = now + pd.Timedelta(hours=status_interval_hours)
 
         if poll_seconds > 0:
             time.sleep(poll_seconds)
@@ -406,7 +436,7 @@ def run_testnet_worker(
         stop_reason=stop_reason,
         event_log_path=str(event_log_path),
     )
-    _write_worker_summary(summary, reports_dir / "worker_summary.json")
+    _write_worker_summary(summary, summary_path)
     if telegram is not None:
         send_telegram_message(telegram, format_telegram_worker_final_summary(summary))
     return summary
@@ -446,21 +476,29 @@ def fetch_testnet_account_snapshot(
 
 def desired_testnet_state(snapshot: PaperSnapshot) -> tuple[str, str, Signal | None]:
     if snapshot.pending_signal is not None:
-        if snapshot.pending_signal.side == "short":
-            return "short", "the last closed candle generated a fresh short entry for the next candle open", snapshot.pending_signal
+        if snapshot.pending_signal.side in {"long", "short"}:
+            return (
+                snapshot.pending_signal.side,
+                f"the last closed candle generated a fresh {snapshot.pending_signal.side} entry for the next candle open",
+                snapshot.pending_signal,
+            )
         if snapshot.pending_signal.side == "flat":
             return "flat", "the last closed candle generated an exit for the next candle open", snapshot.pending_signal
-    if snapshot.open_position is not None and snapshot.open_position.side == "short":
+    if snapshot.open_position is not None and snapshot.open_position.side in {"long", "short"}:
         synthetic_signal = Signal(
             snapshot.last_candle_time,
             snapshot.strategy_name,
             snapshot.params,
-            "short",
-            "carry_existing_short",
+            snapshot.open_position.side,
+            f"carry_existing_{snapshot.open_position.side}",
             snapshot.open_position.invalidation_price,
         )
-        return "short", "the strategy is already in an active short and wants to stay there", synthetic_signal
-    return "flat", "no active short and no fresh short entry signal", None
+        return (
+            snapshot.open_position.side,
+            f"the strategy is already in an active {snapshot.open_position.side} and wants to stay there",
+            synthetic_signal,
+        )
+    return "flat", "no active position and no fresh entry signal", None
 
 
 def worker_stop_reason(snapshot: TestnetAccountSnapshot, min_account_value: float) -> str | None:
@@ -538,34 +576,73 @@ def format_worker_final_summary(summary: TestnetWorkerSummary) -> str:
 
 
 def format_telegram_sync_message(result: TestnetSyncResult) -> str:
+    action_label = escape(result.action.replace("_", " ").upper())
+    position_side = "flat"
+    if result.action.startswith("open_long"):
+        position_side = "long"
+    elif result.action.startswith("open_short"):
+        position_side = "short"
+    elif result.action.startswith("close_long"):
+        position_side = "closing long"
+    elif result.action.startswith("close_short"):
+        position_side = "closing short"
+    elif result.desired_state in {"long", "short"}:
+        position_side = result.desired_state
     lines = [
-        "<b>Hyperliquid Testnet Update</b>",
+        "<b>Hyperliquid Testnet</b>",
+        f"<pre>{action_label}</pre>",
         "",
-        f"• <b>Action</b>: {escape(result.action)}",
-        f"• <b>Desired State</b>: {escape(result.desired_state)}",
-        f"• <b>Reason</b>: {escape(result.action_reason)}",
-        f"• <b>Account</b>: {result.account_snapshot.account_value:.2f} USDC",
-        f"• <b>Withdrawable</b>: {result.account_snapshot.withdrawable:.2f} USDC",
-        f"• <b>BTC Mark</b>: {result.account_snapshot.mark_price:.2f}",
+        "Strategy state changed and the bot acted on it.",
+        "",
+        f"• <b>Position Side</b>  <code>{escape(position_side)}</code>",
+        f"• <b>Desired State</b>  <code>{escape(result.desired_state)}</code>",
+        f"• <b>Reason</b>  {escape(result.action_reason)}",
+        f"• <b>Account</b>  {result.account_snapshot.account_value:.2f} USDC",
+        f"• <b>Withdrawable</b>  {result.account_snapshot.withdrawable:.2f} USDC",
+        f"• <b>BTC Mark</b>  {result.account_snapshot.mark_price:.2f}",
     ]
     if result.order_size_btc is not None:
-        lines.append(f"• <b>Order Size</b>: {result.order_size_btc:.6f} BTC")
+        lines.append(f"• <b>Order Size</b>  {result.order_size_btc:.6f} BTC")
     if result.order_notional_usd is not None:
-        lines.append(f"• <b>Order Notional</b>: {result.order_notional_usd:.2f} USDC")
+        lines.append(f"• <b>Order Notional</b>  {result.order_notional_usd:.2f} USDC")
     live_position = result.account_snapshot.live_position
     if live_position is not None:
         lines.append(
-            f"• <b>Live Position</b>: {escape(live_position.side)} {live_position.size:.6f} BTC"
+            f"• <b>Live Position</b>  {escape(live_position.side)} {live_position.size:.6f} BTC"
         )
-    lines.append(f"• <b>Time</b>: {result.generated_at.isoformat()}")
+    lines.append(f"• <b>Time</b>  <code>{result.generated_at.isoformat()}</code>")
     return "\n".join(lines)
 
 
 def format_telegram_worker_event(title: str, rows: list[tuple[str, str]]) -> str:
     lines = [f"<b>Hyperliquid {escape(title)}</b>", ""]
     for label, value in rows:
-        lines.append(f"• <b>{escape(label)}</b>: {escape(value)}")
+        lines.append(f"• <b>{escape(label)}</b>  {escape(value)}")
     return "\n".join(lines)
+
+
+def format_telegram_worker_status(
+    snapshot: TestnetAccountSnapshot,
+    *,
+    desired_state: str,
+    deadline: pd.Timestamp,
+    now: pd.Timestamp,
+    cycles: int,
+) -> str:
+    remaining = max(pd.Timedelta(0), deadline - now)
+    total_minutes = int(remaining.total_seconds() // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return format_telegram_worker_event(
+        "Worker Status",
+        [
+            ("Desired State", desired_state),
+            ("Account", f"{snapshot.account_value:.2f} USDC"),
+            ("Withdrawable", f"{snapshot.withdrawable:.2f} USDC"),
+            ("BTC Mark", f"{snapshot.mark_price:.2f}"),
+            ("Cycles", str(cycles)),
+            ("Time Left", f"{hours:02d}h {minutes:02d}m"),
+        ],
+    )
 
 
 def format_telegram_worker_final_summary(summary: TestnetWorkerSummary) -> str:

@@ -16,6 +16,7 @@ from tradebot_backtest.testnet import (
     format_testnet_cli_summary,
     format_telegram_sync_message,
     format_telegram_worker_event,
+    format_telegram_worker_status,
     format_worker_final_summary,
     load_telegram_config_from_env,
     send_telegram_message,
@@ -64,6 +65,23 @@ def test_desired_testnet_state_prefers_pending_entry() -> None:
     assert reference == signal
 
 
+def test_desired_testnet_state_prefers_pending_long_entry() -> None:
+    signal = Signal(
+        pd.Timestamp("2026-06-20T10:00:00Z"),
+        "compression_breakout",
+        {"lookback": 48},
+        "long",
+        "compressed_range_break_high",
+        63000.0,
+    )
+
+    state, reason, reference = desired_testnet_state(paper_snapshot(pending_signal=signal))
+
+    assert state == "long"
+    assert "fresh long entry" in reason
+    assert reference == signal
+
+
 def test_desired_testnet_state_uses_open_short_when_no_pending_signal() -> None:
     position = PaperPosition(
         side="short",
@@ -83,6 +101,27 @@ def test_desired_testnet_state_uses_open_short_when_no_pending_signal() -> None:
     assert "already in an active short" in reason
     assert reference is not None
     assert reference.side == "short"
+
+
+def test_desired_testnet_state_uses_open_long_when_no_pending_signal() -> None:
+    position = PaperPosition(
+        side="long",
+        entry_time=pd.Timestamp("2026-06-19T10:00:00Z"),
+        entry_price=65000.0,
+        invalidation_price=64000.0,
+        notional=300.0,
+        units=0.004,
+        unrealized_pnl=5.0,
+        realized_fees=0.2,
+        accumulated_funding=0.0,
+    )
+
+    state, reason, reference = desired_testnet_state(paper_snapshot(open_position=position))
+
+    assert state == "long"
+    assert "already in an active long" in reason
+    assert reference is not None
+    assert reference.side == "long"
 
 
 def test_format_testnet_cli_summary_mentions_dashboard() -> None:
@@ -317,9 +356,10 @@ def test_format_telegram_sync_message_is_more_readable() -> None:
 
     message = format_telegram_sync_message(snapshot)
 
-    assert "<b>Hyperliquid Testnet Update</b>" in message
-    assert "<b>Action</b>: close_short" in message
-    assert "<b>Account</b>: 600.00 USDC" in message
+    assert "<b>Hyperliquid Testnet</b>" in message
+    assert "<pre>CLOSE SHORT</pre>" in message
+    assert "• <b>Position Side</b>  <code>closing short</code>" in message
+    assert "• <b>Account</b>  600.00 USDC" in message
 
 
 def test_format_telegram_worker_event_is_structured() -> None:
@@ -332,4 +372,29 @@ def test_format_telegram_worker_event_is_structured() -> None:
     )
 
     assert message.startswith("<b>Hyperliquid Worker Started</b>")
-    assert "• <b>Mode</b>: execute" in message
+    assert "• <b>Mode</b>  execute" in message
+
+
+def test_format_telegram_worker_status_shows_time_remaining() -> None:
+    snapshot = TestnetAccountSnapshot(
+        account_address="0xabc",
+        trade_address="0xabc",
+        account_value=600.0,
+        withdrawable=590.0,
+        mark_price=64000.0,
+        open_orders=[],
+        recent_fills=[],
+        live_position=None,
+    )
+
+    message = format_telegram_worker_status(
+        snapshot,
+        desired_state="flat",
+        deadline=pd.Timestamp("2026-06-22T10:00:00Z"),
+        now=pd.Timestamp("2026-06-21T10:00:00Z"),
+        cycles=12,
+    )
+
+    assert message.startswith("<b>Hyperliquid Worker Status</b>")
+    assert "• <b>Time Left</b>  24h 00m" in message
+    assert "• <b>Cycles</b>  12" in message

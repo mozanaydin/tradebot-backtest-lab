@@ -75,12 +75,12 @@ BEST_STRATEGY_PRESET = StrategyPreset(
         "atr_length": 14,
         "regime_filter": None,
     },
-    direction_mode="short_only",
+    direction_mode="both",
     risk_fraction=0.005,
     session_preset="all",
     cooldown_bars_after_stop=0,
     minimum_stop_distance_to_cost=1.5,
-    notes="Current best holdout winner from the lab: plain short-side compression breakout.",
+    notes="Current live preset uses the best compression breakout configuration with both long and short entries enabled.",
 )
 
 
@@ -90,7 +90,7 @@ def best_strategy_config(starting_balance: float = 1000.0) -> BacktestConfig:
         risk_fraction=BEST_STRATEGY_PRESET.risk_fraction,
         max_leverage=3.0,
         include_funding=True,
-        allowed_directions=("short",),
+        allowed_directions=("long", "short"),
         allowed_entry_hours=None,
         cooldown_bars_after_stop=BEST_STRATEGY_PRESET.cooldown_bars_after_stop,
         minimum_stop_distance_to_cost=BEST_STRATEGY_PRESET.minimum_stop_distance_to_cost,
